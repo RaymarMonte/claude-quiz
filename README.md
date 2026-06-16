@@ -17,7 +17,7 @@ and [`BUILD-PLAN.md`](BUILD-PLAN.md) (architecture + decisions).
 | [src/schema.ts](src/schema.ts) | Canonical Notion property names + the display-only formulas. |
 | [src/setup.ts](src/setup.ts) | One-time script that creates the two databases. |
 | [src/notion.ts](src/notion.ts) | Thin Notion REST wrapper (property read/write helpers). |
-| [src/tools.ts](src/tools.ts) | The six MCP tools' logic, wrapping the engine + Notion. |
+| [src/tools.ts](src/tools.ts) | The seven MCP tools' logic, wrapping the engine + Notion. |
 | [src/server.ts](src/server.ts) | MCP server over Streamable HTTP (stateless). |
 | [test/engine.test.ts](test/engine.test.ts) | Engine unit tests (`npm test`). |
 
@@ -111,7 +111,9 @@ correctly in the Question Bank, from both web and Android.
 > - **1** Blank or completely incorrect.
 >
 > **Workflow per session:**
-> 1. Call `get_topic(topic)`. If the user wants deep context, call `get_profile(profile_block_id)`.
+> 1. Call `get_topic(topic)`. If it returns `found: false` and the user wants to study it,
+>    call `create_topic(topic)` (optionally seed `category`/`weak_areas`) before continuing.
+>    If the user wants deep context, call `get_profile(profile_block_id)`.
 > 2. Call `get_due_questions(topic)`. If none are due (or the user wants fresh ones), author a
 >    new question with `create_question` — always supply a **Rubric** so it's gradeable.
 > 3. Ask one question at a time (the `prompt` is ready to show). After the user answers,

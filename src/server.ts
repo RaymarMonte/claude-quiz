@@ -1,5 +1,5 @@
 /**
- * MCP server over Streamable HTTP (stateless). Exposes the six v5 tools to the
+ * MCP server over Streamable HTTP (stateless). Exposes the seven v5 tools to the
  * chat-Claude via a custom connector. Run it, then `tailscale funnel` the port to
  * get a public HTTPS URL (see README, Phase 5-7).
  *
@@ -78,6 +78,29 @@ function buildServer(): McpServer {
     },
     async ({ question_id, score, gap_notes }) =>
       json(await tools.submitEvaluation(question_id, score as Score, gap_notes))
+  );
+
+  server.registerTool(
+    "create_topic",
+    {
+      description:
+        "Create a new topic row in the Topics database so it can be quizzed. Use when the user wants to study something that doesn't exist yet (get_topic returned found:false). New topics start Active. Duplicate topic names are skipped. Optionally seed Category, Weak Areas, and a profile summary (creates the Profile Callout).",
+      inputSchema: {
+        topic: z.string().describe("The topic name — also the dedup key (e.g. 'SQL')."),
+        category: z.enum(["Technical", "Behavioral"]).optional().describe("Topic category."),
+        weak_areas: z
+          .string()
+          .max(200)
+          .optional()
+          .describe("Optional initial weak areas (comma list, compressed)."),
+        profile_summary: z
+          .string()
+          .max(1500)
+          .optional()
+          .describe("Optional <=300-word seed for the Profile Callout (deep context)."),
+      },
+    },
+    async (args) => json(await tools.createTopic(args))
   );
 
   server.registerTool(

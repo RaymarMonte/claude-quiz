@@ -1,5 +1,5 @@
 /**
- * The six MCP tools' logic, wrapping the deterministic engine + the Notion client.
+ * The seven MCP tools' logic, wrapping the deterministic engine + the Notion client.
  *
  * Division of labor (the v5 contract): the chat-Claude supplies ONLY judgment/content
  * (score, gap_notes, generated text). Everything scheduling/state — new Status, new
@@ -232,6 +232,53 @@ export class QuizTools {
     return { ok: true, question_id: created.id, title: args.title.trim(), due: today };
   }
 
+  // ---- create_topic --------------------------------------------------------
+
+  async createTopic(args: {
+    topic: string;
+    category?: string;
+    weak_areas?: string;
+    profile_summary?: string;
+  }) {
+    const title = args.topic.trim();
+    if (!title) return { ok: false, message: "Topic name is required." };
+
+    // Titles-only dedup: a topic with this name (case-insensitive) already exists?
+    const existing: any = await this.notion.databases.query({
+      database_id: this.cfg.topicsDbId,
+      filter: { property: TOPIC_PROP.Topic, title: { equals: title } },
+      page_size: 1,
+    });
+    if (existing.results.length > 0) {
+      return {
+        ok: false,
+        deduped: true,
+        message: `A topic named "${title}" already exists.`,
+        topic_id: existing.results[0].id,
+      };
+    }
+
+    const properties: Record<string, any> = {
+      [TOPIC_PROP.Topic]: W.title(title),
+      [TOPIC_PROP.Status]: W.select("Active"),
+    };
+    if (args.category) properties[TOPIC_PROP.Category] = W.select(args.category);
+    if (args.weak_areas !== undefined && args.weak_areas.trim() !== "")
+      properties[TOPIC_PROP.WeakAreas] = W.text(args.weak_areas.trim());
+
+    const created: any = await this.notion.pages.create({
+      parent: { database_id: this.cfg.topicsDbId },
+      properties,
+    });
+
+    let profileBlockId: string | null = null;
+    if (args.profile_summary !== undefined && args.profile_summary.trim() !== "") {
+      profileBlockId = await this.createProfileCallout(created.id, args.profile_summary);
+    }
+
+    return { ok: true, topic_id: created.id, topic: title, profile_block_id: profileBlockId };
+  }
+
   // ---- update_topic --------------------------------------------------------
 
   async updateTopic(args: { topic: string; weak_areas?: string; profile_summary?: string }) {
@@ -255,23 +302,32 @@ export class QuizTools {
         profileUpdated = true;
       } else {
         // No Callout yet — create one in the page body and store its block ID.
-        const appended: any = await this.notion.blocks.children.append({
-          block_id: found.id,
-          children: [
-            { object: "block", type: "callout", callout: { ...(W.textObjects(parts) as any), icon: { emoji: "🧠" } } },
-          ],
-        });
-        const newBlockId = appended.results?.[0]?.id;
-        if (newBlockId) {
-          await this.notion.pages.update({
-            page_id: found.id,
-            properties: { [TOPIC_PROP.ProfileBlockId]: W.text(newBlockId) },
-          });
-          profileUpdated = true;
-        }
+        profileUpdated = (await this.createProfileCallout(found.id, args.profile_summary)) !== null;
       }
     }
     return { ok: true, topic_id: found.id, last_quizzed: today, profile_updated: profileUpdated };
+  }
+
+  /**
+   * Create the Profile Callout block in a topic page's body and store its block ID in
+   * the Profile Block ID property. Returns the new block ID (or null if append failed).
+   * Shared by create_topic and update_topic's "no existing callout yet" path.
+   */
+  private async createProfileCallout(pageId: string, summary: string): Promise<string | null> {
+    const parts = splitForCallout(clampProfile(summary));
+    const appended: any = await this.notion.blocks.children.append({
+      block_id: pageId,
+      children: [
+        { object: "block", type: "callout", callout: { ...(W.textObjects(parts) as any), icon: { emoji: "🧠" } } },
+      ],
+    });
+    const newBlockId = appended.results?.[0]?.id;
+    if (!newBlockId) return null;
+    await this.notion.pages.update({
+      page_id: pageId,
+      properties: { [TOPIC_PROP.ProfileBlockId]: W.text(newBlockId) },
+    });
+    return newBlockId;
   }
 }
 
