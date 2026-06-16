@@ -142,6 +142,83 @@ correctly in the Question Bank, from both web and Android.
 - Dedup is titles-only via the Title property's **internal ID**.
 - Writes aren't transactional; an accidental double-`submit_evaluation` is dropped within ~90s.
 
+## Deploying on Debian 13 (xfce, x86-64)
+
+The code is OS-agnostic (no Windows-specific calls). It runs on Debian as-is; you just need
+Node 22 and a few setup steps.
+
+**1. Install Node 22** (Debian 13's apt `nodejs` is too old). Use NodeSource:
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl ca-certificates
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version   # expect v22.x
+```
+
+**2. Get the code + install deps:**
+
+```bash
+git clone <your-repo> claude-quiz && cd claude-quiz
+npm ci                # or: npm install
+cp .env.example .env  # then fill it in
+```
+
+**3. Set the system timezone** — `Due`/"today" use the server's local date, so the box must
+be on your timezone:
+
+```bash
+timedatectl                                  # check current zone
+sudo timedatectl set-timezone Asia/Manila    # use your actual zone
+```
+
+**4. Create the DBs, test, run** (same as above):
+
+```bash
+npm run setup        # paste the printed IDs into .env, share both DBs with the integration
+npm test
+npm start            # listens on PORT (default 8787)
+```
+
+**5. Keep it running with systemd** (so it survives reboots/logout). Create
+`/etc/systemd/system/claude-quiz.service`:
+
+```ini
+[Unit]
+Description=claude-quiz MCP server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/claude-quiz
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now claude-quiz
+systemctl status claude-quiz          # confirm it's running
+curl http://localhost:8787/health
+```
+
+**6. Expose with Tailscale Funnel** (install Tailscale on Debian if needed):
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+sudo tailscale funnel 8787            # prints your public https://…ts.net URL
+```
+
+Run Funnel as a background service too if you want it persistent:
+`sudo tailscale funnel --bg 8787`. Your MCP endpoint is that URL **+ `/mcp`**.
+
 ## Notes
 
 - **No Anthropic API key / billing** — the grading model is the chat client (your Claude plan).
