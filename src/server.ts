@@ -7,6 +7,7 @@
  * connector calls are independent JSON-RPC requests from Anthropic's cloud, so we
  * don't keep per-session SSE state — simpler and resilient to the server restarting.
  */
+import { timingSafeEqual } from "node:crypto";
 import express from "express";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -145,7 +146,36 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true, service: "claude-quiz" }));
 
+/** Constant-time string compare that tolerates differing lengths. */
+function secretEquals(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+/**
+ * Optional shared-secret gate. Accepts the token via `Authorization: Bearer <token>`
+ * or a `?token=<token>` query param (whichever the connector can set). No-op when
+ * AUTH_TOKEN is unset.
+ */
+function authorize(req: express.Request, res: express.Response): boolean {
+  if (!cfg.authToken) return true;
+  const header = req.header("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const query = typeof req.query.token === "string" ? req.query.token : "";
+  const provided = bearer || query;
+  if (provided && secretEquals(provided, cfg.authToken)) return true;
+  res.status(401).json({
+    jsonrpc: "2.0",
+    error: { code: -32001, message: "Unauthorized" },
+    id: null,
+  });
+  return false;
+}
+
 app.post("/mcp", async (req, res) => {
+  if (!authorize(req, res)) return;
   // Fresh server + transport per request (stateless).
   const server = buildServer();
   const transport = new StreamableHTTPServerTransport({
@@ -184,5 +214,6 @@ app.delete("/mcp", methodNotAllowed);
 app.listen(cfg.port, () => {
   console.log(`claude-quiz MCP server listening on http://localhost:${cfg.port}/mcp`);
   console.log(`Health check: http://localhost:${cfg.port}/health`);
+  console.log(`Auth: ${cfg.authToken ? "ON (shared secret required)" : "OFF — set AUTH_TOKEN before public deploy"}`);
   console.log(`Interval easing: ${cfg.easing ? "ON" : "off"}`);
 });

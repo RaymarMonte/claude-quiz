@@ -32,6 +32,9 @@ export function runtimeConfig() {
     questionBankDbId: required("QUESTION_BANK_DB_ID"),
     questionTitlePropId: required("QUESTION_TITLE_PROP_ID"),
     port: Number(optional("PORT") ?? "8787"),
+    // Shared-secret guarding POST /mcp. If unset, the endpoint is unauthenticated
+    // (fine for localhost/Tailscale; set it before deploying to a public host).
+    authToken: optional("AUTH_TOKEN"),
     // Optional Mastered-interval easing (14 * max(Streak-1,1)). Off by default.
     easing: (optional("INTERVAL_EASING") ?? "false").toLowerCase() === "true",
   };
