@@ -1,5 +1,11 @@
 /** Typed environment config. Loaded once at process start. */
 import "dotenv/config";
+import dns from "node:dns";
+
+// Prefer IPv4 for outbound DNS. Fly machines have IPv6 egress that can establish
+// a connection but drop the response mid-stream (seen as "Premature close" to
+// api.notion.com); IPv4-first sidesteps that path. Harmless elsewhere.
+dns.setDefaultResultOrder("ipv4first");
 
 function required(name: string): string {
   const v = process.env[name];

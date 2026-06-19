@@ -6,8 +6,18 @@
  */
 import { Client } from "@notionhq/client";
 
+// Use Node's native fetch (undici) instead of the SDK's bundled node-fetch.
+// undici does Happy-Eyeballs (races IPv4/IPv6) and is far more robust in
+// containers; node-fetch gave consistent "Premature close" on outbound calls
+// from Fly, whose IPv6 egress drops long-haul transfers to api.notion.com.
+// Strip the node-fetch-only `agent` option that undici's fetch doesn't accept.
+const undiciFetch = ((url: any, init: { agent?: unknown } = {}) => {
+  const { agent: _agent, ...rest } = init;
+  return fetch(url, rest as RequestInit);
+}) as never;
+
 export function makeNotion(token: string): Client {
-  return new Client({ auth: token, notionVersion: "2022-06-28" });
+  return new Client({ auth: token, notionVersion: "2022-06-28", fetch: undiciFetch });
 }
 
 // Notion property values come back as a loose union; we read defensively.
