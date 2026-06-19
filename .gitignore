@@ -5,3 +5,8 @@ dist/
 *.log
 npm-debug.log*
 .DS_Store
+
+# This project is npm-centric (package-lock.json is the lockfile of record).
+# Ignore stray pnpm artifacts so they don't get committed.
+pnpm-lock.yaml
+pnpm-workspace.yaml

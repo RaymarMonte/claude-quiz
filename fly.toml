@@ -1,0 +1,33 @@
+# Fly.io config for the claude-quiz MCP server.
+# `fly launch` will reuse this file. Change `app` to a globally-unique name and
+# `primary_region` to one near you (run `fly platform regions` to list).
+app = "claude-quiz"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  # Optional Mastered-interval easing (see README). Off by default.
+  # INTERVAL_EASING = "false"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # Scale to zero when idle so this costs ~nothing; the connector's first call
+  # wakes it (a few seconds). Set min_machines_running = 1 to avoid cold starts.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

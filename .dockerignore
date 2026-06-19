@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.gitattributes
+.env
+.env.local
+*.log
+dist
+pnpm-lock.yaml
+pnpm-workspace.yaml
+test
+*.md
+fly.toml

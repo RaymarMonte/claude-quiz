@@ -84,7 +84,11 @@ Copy the printed `https://<machine>.<tailnet>.ts.net` URL. Your MCP endpoint is 
 ## 5. Wire it to Claude (authless connector)
 
 1. On **claude.ai** (web) → Settings → Connectors → **Add custom connector**.
-2. Name it (e.g. "Quiz") and paste the **`https://…ts.net/mcp`** URL. Auth: **None / authless**.
+2. Name it (e.g. "Quiz") and paste the **`/mcp`** URL. For a Tailscale Funnel URL without
+   `AUTH_TOKEN`, Auth is **None / authless**. For a public host (e.g. Fly) where you set
+   `AUTH_TOKEN`, append the secret as a query param —
+   **`https://<app>.fly.dev/mcp?token=<your AUTH_TOKEN>`** — since the authless connector
+   doesn't send custom headers. (The server also accepts `Authorization: Bearer <token>`.)
 3. Create a **Project**, enable the connector for it, and paste the instruction prompt below.
 4. Connectors added on web are usable from the **Android app** too (you just can't *add* new
    ones from the phone).
@@ -234,8 +238,55 @@ sudo tailscale funnel 8787            # prints your public https://…ts.net URL
 Run Funnel as a background service too if you want it persistent:
 `sudo tailscale funnel --bg 8787`. Your MCP endpoint is that URL **+ `/mcp`**.
 
+## Deploying to Fly.io (cheap, no PC required)
+
+The server is stateless and idle except during a quiz, so Fly's scale-to-zero is a near-free
+fit and removes the dependency on a machine you keep running at home. Ships with a
+[`Dockerfile`](Dockerfile) and [`fly.toml`](fly.toml).
+
+**1. Install flyctl + log in:**
+
+```bash
+curl -L https://fly.io/install.sh | sh
+fly auth login
+```
+
+**2. Create the Notion DBs once (locally)** with `npm run setup` — the deployed instance
+never runs setup; it only needs the resulting IDs as secrets.
+
+**3. Launch.** Edit `fly.toml` first: set `app` to a globally-unique name and
+`primary_region` to one near you (`fly platform regions`). Then:
+
+```bash
+fly launch --no-deploy --copy-config   # reuses the bundled fly.toml/Dockerfile
+```
+
+**4. Set secrets** (encrypted; never put these in `fly.toml` or `.env` on the host):
+
+```bash
+fly secrets set \
+  NOTION_TOKEN=secret_… \
+  TOPICS_DB_ID=… QUESTION_BANK_DB_ID=… QUESTION_TITLE_PROP_ID=… \
+  AUTH_TOKEN="$(openssl rand -hex 32)"   # save this value — the connector needs it
+```
+
+**5. Deploy + verify:**
+
+```bash
+fly deploy
+fly open /health            # or: curl https://<app>.fly.dev/health  → {"ok":true,...}
+```
+
+Your MCP endpoint is `https://<app>.fly.dev/mcp`. Because `AUTH_TOKEN` is set, every request
+must present the secret (see the connector step below).
+
+> Cost/perf knobs in `fly.toml`: `min_machines_running = 0` keeps it ~free but adds a few
+> seconds of cold-start on the first call of a session — set it to `1` to stay warm. Bump
+> `memory` to `512mb` if you ever see OOM in `fly logs`.
+
 ## Notes
 
 - **No Anthropic API key / billing** — the grading model is the chat client (your Claude plan).
 - Optional Mastered-interval easing (`14 × max(Streak−1, 1)`): set `INTERVAL_EASING=true` in `.env`.
-- Authless is fine to start (single-user, random Funnel URL). Move to OAuth later if you want.
+- Authless is fine on a random Funnel URL; on a public host set `AUTH_TOKEN` (shared secret on
+  `/mcp`, passed as `?token=` or `Authorization: Bearer`). Move to OAuth later if you want.
